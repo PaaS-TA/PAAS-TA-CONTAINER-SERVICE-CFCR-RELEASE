@@ -1,0 +1,18 @@
+set -e
+
+ETCDCTL_VERSION="3.0.7"
+
+main() {
+  copy_binary
+  make_executable
+}
+
+copy_binary() {
+  cp -a etcdctl-${ETCDCTL_VERSION} "${BOSH_INSTALL_TARGET:?}/etcdctl"
+}
+
+make_executable() {
+  chmod +x "${BOSH_INSTALL_TARGET:?}/etcdctl"
+}
+
+main

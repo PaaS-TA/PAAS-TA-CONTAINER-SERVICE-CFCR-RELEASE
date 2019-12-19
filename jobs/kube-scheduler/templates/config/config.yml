@@ -1,0 +1,1 @@
+<% require 'yaml' %><%= p('kube-scheduler-configuration').to_yaml %>

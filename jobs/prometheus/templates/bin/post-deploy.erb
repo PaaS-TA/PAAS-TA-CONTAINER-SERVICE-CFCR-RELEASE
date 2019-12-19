@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+#wait for 100sec for monit restart in case of GCP
+echo "$(date '+%Y-%m-%d %H:%M:%S') sleep 100sec"
+sleep 100
+
+
+DATA_DIR=/var/vcap/jobs/prometheus/bin/prometheus
+KUBECTL=/var/vcap/packages/kubernetes/bin/kubectl
+
+# node IP hosts setting(for gcp. help helm to find tiller's IP directly) - try 2 times
+{
+    sudo ${KUBECTL} get no -o wide | grep -v NAME | awk '{printf "%s    %s\n",$6,$1}' >> /etc/hosts
+} || {
+    sleep 10
+    sudo ${KUBECTL} get no -o wide | grep -v NAME | awk '{printf "%s    %s\n",$6,$1}' >> /etc/hosts
+}
+
+# check prometheus namespace and create
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== Start: create namespace prometheus =========="
+NSS="$(${KUBECTL} get namespaces)"
+
+if [[ "$NSS" == *"prometheus"* ]];then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') namespace prometheus exists already"
+else
+    #echo "$(date '+%Y-%m-%d %H:%M:%S') no prometheus"
+    ${KUBECTL} create namespace prometheus
+fi
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== End: create namespace prometheus =========="
+
+
+# install prometheus agent
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== Start: install helm =========="
+sudo chmod +x ${DATA_DIR}/install-helm.sh
+sudo ${DATA_DIR}/install-helm.sh
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== End: install helm =========="
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== Start: kubernetes settings =========="
+${KUBECTL} -n kube-system create serviceaccount tiller
+${KUBECTL} create clusterrolebinding tiller-admin-binding --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+${KUBECTL} -n kube-system create serviceaccount monitoring-admin
+${KUBECTL} create clusterrolebinding monitoring-admin-binding --clusterrole=cluster-admin --serviceaccount=kube-system:monitoring-admin
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== End: kubernetes settings =========="
+
+
+
+# wait for a while helm install
+sleep 10
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== Initialize helm =========="
+/usr/local/bin/helm init --service-account=tiller
+${KUBECTL} patch deploy --namespace kube-system tiller-deploy -p '{"spec":{"template":{"spec":{"serviceAccount":"tiller"}}}}'
+
+/usr/local/bin/helm repo update
+
+COUNT=20
+while [[ $COUNT -gt 0 ]]; do
+    echo "COUNT:::$COUNT"
+    let COUNT=COUNT-1
+
+    TILLER=$(${KUBECTL} get pods -n kube-system -l name=tiller)
+    TILLER=$(echo $TILLER | tr "\n" " ")
+    echo "tiller againR:::${TILLER}"
+    if [[ ${TILLER} =~ "Running" ]];then
+        echo "tiller is Running"
+        COUNT=0
+        sleep 10
+    else
+        echo "Now wait for 10 sec."
+        sleep 10
+    fi
+done
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== Start: install prometheus =========="
+/usr/local/bin/helm install --name prometheus --namespace prometheus stable/prometheus-operator --set prometheus.service.type=NodePort
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') ========== End: install prometheus =========="
+
+exit 0
+
+

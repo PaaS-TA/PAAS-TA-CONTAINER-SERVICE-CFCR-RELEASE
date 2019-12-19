@@ -1,0 +1,49 @@
+---
+name: kube-controller-manager
+
+templates:
+  bin/chmod-product-serial: bin/chmod-product-serial
+  config/bpm.yml.erb: config/bpm.yml
+  config/ca.pem.erb: config/ca.pem
+  config/cloud-provider.ini.erb: config/cloud-provider.ini
+  config/kubeconfig.erb: config/kubeconfig
+  config/openstack-ca.crt.erb: config/openstack-ca.crt
+  config/service-account-private-key.pem.erb: config/service-account-private-key.pem
+  config/service_key.json.erb: config/service_key.json
+  config/cluster-signing-ca.pem.erb: config/cluster-signing-ca.pem
+  config/cluster-signing-key.pem.erb: config/cluster-signing-key.pem
+  config/kube-controller-manager-cert.pem.erb: config/kube-controller-manager-cert.pem
+  config/kube-controller-manager-private-key.pem.erb: config/kube-controller-manager-private-key.pem
+
+packages:
+- kubernetes
+
+properties:
+  api-token:
+    description: "API Token for the system:kube-controller-manager user"
+  cluster-signing:
+    description: "CA Certificate and private key for the certificate controller to issue certificates"
+  http_proxy:
+    description: http_proxy env var for the kubernetes-controller-manager binary (i.e. for cloud provider interactions)
+  https_proxy:
+    description: https_proxy env var for the kubernetes-controller-manager binary (i.e. for cloud provider interactions)
+  no_proxy:
+    description: no_proxy env var for cloud provider interactions, i.e. for the kubelet
+  tls.kubernetes:
+    description: "Certificate and private key for the Kubernetes master"
+  tls.kube-controller-manager:
+    description: "Certificate and private key for serving HTTPS from kube-controller-manager"
+  service-account-private-key:
+    description: "Private key used to sign generated tokens"
+  k8s-args:
+    description: "Pass-through options for Kubernetes runtime arguments. See https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/ for reference."
+    example: |
+      k8s-args:
+        bind-address: 0.0.0.0
+        cluster-name: kubernetes
+        enable-garbage-collector: true
+
+consumes:
+- name: cloud-provider
+  type: cloud-provider
+  optional: true

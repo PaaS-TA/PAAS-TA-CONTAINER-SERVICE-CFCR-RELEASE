@@ -1,0 +1,10 @@
+---
+name: prometheus
+packages:
+- prometheus
+
+templates:
+  bin/post-deploy.erb: bin/post-deploy
+  bin/prometheus/install-helm.sh: bin/prometheus/install-helm.sh
+
+properties: {}

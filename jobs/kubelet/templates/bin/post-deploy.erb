@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+<% if_p('cloud-provider') do |cloud_provider| %>
+  cloud_provider="<%= cloud_provider %>"
+<% end %>
+
+if [[ "gce" == "$cloud_provider" ]]; then
+  if timeout "10" /var/vcap/jobs/kubelet/bin/ensure_kubelet_up_and_running
+  then
+    echo "already succeded."
+  else
+    echo "restart monit!!!!!!!!!!!"
+    echo "monit retry" > /var/vcap/bosh/bin/monit.log
+    sleep 10
+    sudo /var/vcap/bosh/bin/monit restart all
+  fi  
+fi

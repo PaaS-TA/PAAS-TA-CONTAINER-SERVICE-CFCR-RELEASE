@@ -1,0 +1,43 @@
+#!/bin/bash -ex
+
+<%
+  def escape(value)
+    if value.kind_of? String
+      return value.gsub("\\", "\\\\\\").gsub("\"", "\\\"")
+    else
+      value
+    end
+  end
+  
+  auth_url=""
+  if_link('cloud-provider') do |cloud_provider|
+    if cloud_provider.p('cloud-provider.type').downcase == "openstack"
+      cloud_provider.p('cloud-config', {}).each do |header, properties|
+        properties.each do |property, value|
+          raise TypeError, "Invalid value of type #{value.class} for property \"#{property}\"" if value.is_a? Enumerable
+		  if "auth-url" == "#{property}"
+		    auth_url="#{escape(value)}"
+	      end
+        end
+      end
+    end
+  end
+%>
+
+auth_ip="<%= auth_url %>"
+
+
+if [[ "$auth_ip" == *"http"* ]];then
+	{
+		auth_ip="${auth_ip%.*}"
+		auth_ip="${auth_ip##*/}.0/24"
+
+		node_ip="<%= spec.ip %>"
+		node_ip="${node_ip%.*}.254"
+	
+		route add -net ${auth_ip} gw ${node_ip}
+		echo "Route added ::: 'route add -net ${auth_ip} gw ${node_ip}'"
+	} || {
+		echo "Route for openstack aleady added!!!"
+	}
+fi

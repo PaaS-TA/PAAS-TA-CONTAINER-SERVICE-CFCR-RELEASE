@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+set -e
+
+spec_dir="/var/vcap/jobs/apply-specs/specs"
+config_dir="/var/vcap/jobs/apply-specs/config"
+
+kubectl="/var/vcap/packages/kubernetes/bin/kubectl --kubeconfig=/var/vcap/jobs/apply-specs/config/kubeconfig"
+
+apply_spec() {
+  local spec_file="${spec_dir}/${1}"
+  echo "Deploying $spec_file"
+  ${kubectl} apply -f "${spec_file}"
+}
+
+wait_for() {
+    ${kubectl} rollout status "deployments/${1}" -w --namespace=kube-system
+}
+
+create_dashboard_secrets() {
+  local secret_name=kubernetes-dashboard-certs
+  local namespace=kube-system
+
+  if ${kubectl} get secret ${secret_name} -n ${namespace} > /dev/null 2>&1; then
+    ${kubectl} delete secret ${secret_name} -n ${namespace}
+  fi
+
+  ${kubectl} create secret generic ${secret_name} \
+  --from-file=kubernetes-dashboard-cert=${config_dir}/kubernetes-dashboard/kubernetes-dashboard.crt \
+  --from-file=kubernetes-dashboard-key=${config_dir}/kubernetes-dashboard/kubernetes-dashboard.key \
+  -n ${namespace}
+}
+
+main() {
+
+<%
+  supported_addons = ['coredns', 'metrics-server', 'kubernetes-dashboard']
+
+  bootstrap_addons = p('addons')
+
+  bootstrap_addons = bootstrap_addons.each do |v|
+    raise "#{v} is not a supported addon" unless supported_addons.include?(v)
+  end
+  %>
+  <% if bootstrap_addons.include?('coredns') %>
+    apply_spec "coredns.yml"
+    wait_for coredns
+  <% end %>
+
+  <% if bootstrap_addons.include?('metrics-server') %>
+    apply_spec "metrics-server/"
+    wait_for metrics-server
+  <% end %>
+
+  <% if bootstrap_addons.include?('kubernetes-dashboard') %>
+    create_dashboard_secrets
+    apply_spec "kubernetes-dashboard.yml"
+    wait_for kubernetes-dashboard
+  <% end %>
+
+  <% if_link('cloud-provider') do |cloud_provider| %>
+    <% cloud_provider.if_p('cloud-provider.type') do |p| %>
+      <% if p == 'gce' %>
+        apply_spec "storage-class-gce.yml"
+      <% end %>
+    <% end %>
+  <% end %>
+  echo "System specs added successfully."
+
+  <% if !p('addons-spec').empty? and p('addons-spec') != "nil" %>
+  apply_spec "addon-spec.yml"
+  <% else %>
+  echo "No addons to apply."
+  <% end %>
+}
+
+main

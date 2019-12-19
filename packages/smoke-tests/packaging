@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e -x
+
+source /var/vcap/packages/golang-1.12-linux/bosh/compile.env
+
+mkdir $GOPATH/src
+cp -r smoke-tests $GOPATH/src
+cd $GOPATH/src/smoke-tests
+go test -c -v -o  ${BOSH_INSTALL_TARGET}/run-smoke-tests
+cp -a fixtures $BOSH_INSTALL_TARGET

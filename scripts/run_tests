@@ -1,0 +1,29 @@
+#!/bin/bash -e
+[ -z "$DEBUG" ] || set -x
+
+project_root="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../" && pwd )"
+
+run_go_tests() {
+  sourceDir=$1
+  pushd "$sourceDir" > /dev/null
+    export GOPATH=${project_root}
+    echo "Running go vet"
+    go vet ./...
+    echo "Running ginkgo"
+    ginkgo -r -race .
+    echo "Compiling final binary"
+    go build
+  popd > /dev/null
+}
+
+test_release_specs() {
+  pushd "${project_root}" > /dev/null
+    bundle install
+    bundle exec rspec spec/*_spec.rb
+  popd > /dev/null
+
+}
+
+test_release_specs
+
+exit 0

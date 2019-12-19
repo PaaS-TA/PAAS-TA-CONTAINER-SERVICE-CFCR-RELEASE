@@ -1,0 +1,129 @@
+#!/bin/bash -ex
+
+NAME="${0##*/}"
+
+export PATH=/var/vcap/packages/flanneld/:$PATH
+
+<%-
+  def get_url(server, port)
+    if link('etcd').p('etcd.dns_suffix', false) != false
+      node_name = "#{server.name.gsub('_','-')}-#{server.index}"
+      return "https://#{node_name}.#{link('etcd').p('etcd.dns_suffix')}:#{port}"
+    else
+      return "https://#{server.address}:#{port}"
+    end
+  end
+-%>
+
+RUN_DIR=/var/vcap/sys/run/flanneld
+PIDFILE=$RUN_DIR/flanneld.pid
+LOG_DIR=/var/vcap/sys/log/flanneld
+
+# shellcheck disable=SC1091
+. /var/vcap/packages/pid_utils/pid_utils.sh
+
+setup_directories() {
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+  chown -R vcap:vcap "$RUN_DIR" "$LOG_DIR"
+}
+
+send_process_stdout_to_logfile() {
+  exec 1>> "$LOG_DIR/$NAME.stdout.log"
+}
+
+send_process_stderr_to_logfile() {
+  exec 2>> "$LOG_DIR/$NAME.stderr.log"
+}
+
+start_flanneld() {
+  <% etcd_endpoints = link('etcd').instances.map { |server| get_url(server, 2379) }.join(",") %>
+
+  modprobe br_netfilter || true
+
+  mkdir -p /dev/net
+  mknod /dev/net/tun c 10 200 || true
+  echo 1 > /proc/sys/net/ipv4/ip_forward
+  mkdir -p /etc/cni/net.d
+  rm  /etc/cni/net.d/10-flannel.conf || true
+  cat  > /etc/cni/net.d/50-flannel.conflist <<EOL
+{
+    "name": "flannel-network",
+    "plugins": [
+	    {
+		    "type": "flannel",
+		    "delegate": {
+			    "hairpinMode": true,
+			    "isDefaultGateway": true
+		    }
+	    },
+	    {
+		    "type": "portmap",
+		    "capabilities": {
+			    "portMappings": true
+		    }
+	    }
+    ]
+}
+EOL
+
+  <%
+    network_conf = {'Network' => p('pod-network-cidr'), 'Backend' => {'Type':  p('backend-type')}}
+    if_p('port') { |port| network_conf['Backend']['Port'] = port }
+    if_p('vni') { |vni| network_conf['Backend']['VNI'] = vni }
+  %>
+  /var/vcap/packages/etcdctl/etcdctl \
+    --endpoints <%= etcd_endpoints %> \
+    --cert-file /var/vcap/jobs/flanneld/config/etcd-client.crt \
+    --key-file /var/vcap/jobs/flanneld/config/etcd-client.key \
+    --ca-file /var/vcap/jobs/flanneld/config/etcd-ca.crt \
+    set /coreos.com/network/config '<%= JSON.dump(network_conf) %>'
+
+  flanneld -etcd-endpoints=<%= etcd_endpoints %> \
+    --ip-masq \
+    --etcd-certfile=/var/vcap/jobs/flanneld/config/etcd-client.crt \
+    --etcd-keyfile=/var/vcap/jobs/flanneld/config/etcd-client.key \
+    --etcd-cafile=/var/vcap/jobs/flanneld/config/etcd-ca.crt \
+    1>> $LOG_DIR/flanneld.stdout.log \
+    2>> $LOG_DIR/flanneld.stderr.log
+}
+
+stop_flanneld() {
+  kill_and_wait "$PIDFILE"
+}
+
+pid() {
+  head -1 "$PIDFILE"
+}
+
+stop_associated_logging_processes() {
+  # shellcheck disable=SC2046
+  pkill -g $(get_group_pid)
+}
+
+get_group_pid() {
+  ps -ho pgrp "$(pid)"
+}
+
+case $1 in
+
+  start)
+    setup_directories
+    send_process_stdout_to_logfile
+    send_process_stderr_to_logfile
+
+    pid_guard "$PIDFILE" "Flanneld"
+
+    echo $$ > $PIDFILE
+    start_flanneld
+    ;;
+
+  stop)
+    stop_associated_logging_processes
+    stop_flanneld
+    ;;
+
+  *)
+    echo "Usage: $0 {start|stop}"
+    ;;
+
+esac

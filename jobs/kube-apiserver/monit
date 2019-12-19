@@ -1,0 +1,5 @@
+check process kube-apiserver
+  with pidfile /var/vcap/sys/run/bpm/kube-apiserver/kube-apiserver.pid
+  start program "/var/vcap/jobs/bpm/bin/bpm start kube-apiserver"
+  stop program "/var/vcap/jobs/bpm/bin/bpm stop kube-apiserver"
+  group vcap
