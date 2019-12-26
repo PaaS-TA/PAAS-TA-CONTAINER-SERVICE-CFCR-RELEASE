@@ -22,6 +22,7 @@ NSS="$(${KUBECTL} get namespaces)"
 
 if [[ "$NSS" == *"prometheus"* ]];then
     echo "$(date '+%Y-%m-%d %H:%M:%S') namespace prometheus exists already"
+	exit 0
 else
     #echo "$(date '+%Y-%m-%d %H:%M:%S') no prometheus"
     ${KUBECTL} create namespace prometheus
